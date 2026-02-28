@@ -16,4 +16,5 @@ export interface Draft {
   text: string;
   createdAt: string;
   status: "pending" | "approved" | "rejected";
+  replyToId?: string;
 }

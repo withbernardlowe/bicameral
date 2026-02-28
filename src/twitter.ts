@@ -1,7 +1,7 @@
 import { Env } from "./types";
 
 // OAuth 1.0a signature for Twitter API v2
-export async function postTweet(text: string, env: Env): Promise<{ id: string; text: string }> {
+export async function postTweet(text: string, env: Env, replyToId?: string): Promise<{ id: string; text: string }> {
   const url = "https://api.twitter.com/2/tweets";
   const method = "POST";
   const timestamp = Math.floor(Date.now() / 1000).toString();
@@ -41,7 +41,10 @@ export async function postTweet(text: string, env: Env): Promise<{ id: string; t
       Authorization: authHeader,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ text }),
+    body: JSON.stringify({
+      text,
+      ...(replyToId ? { reply: { in_reply_to_tweet_id: replyToId } } : {}),
+    }),
   });
 
   if (!res.ok) {

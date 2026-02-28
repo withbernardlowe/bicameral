@@ -47,7 +47,9 @@ export async function sendDraftDM(draft: Draft, env: Env): Promise<void> {
 
   // Send message with buttons
   const message = {
-    content: `📝 **新推文草稿**\n\n${draft.text}`,
+    content: draft.replyToId
+      ? `📝 **回覆草稿**\n\n↩️ https://x.com/i/status/${draft.replyToId}\n\n${draft.text}`
+      : `📝 **新推文草稿**\n\n${draft.text}`,
     components: [
       {
         type: 1, // Action Row
