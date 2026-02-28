@@ -1,4 +1,4 @@
-import { Env, Draft } from "./types";
+import { Env, Draft, FollowRequest } from "./types";
 import { verifyDiscordSignature, sendDraftDM, interactionResponse, updateMessage } from "./discord";
 import { postTweet, followUser, getMyId, lookupUser } from "./twitter";
 
@@ -129,14 +129,37 @@ async function handleFollow(request: Request, env: Env): Promise<Response> {
     return new Response("Missing 'username' field", { status: 400 });
   }
 
+  const username = body.username.replace(/^@/, "");
+
+  // Lookup user ID first
+  let targetId: string;
   try {
-    const targetId = await lookupUser(body.username.replace(/^@/, ""), env);
-    const myId = await getMyId(env);
-    const result = await followUser(myId, targetId, env);
-    return Response.json(result);
+    targetId = await lookupUser(username, env);
   } catch (err) {
-    return new Response(`Failed: ${(err as Error).message}`, { status: 502 });
+    return new Response(`User lookup failed: ${(err as Error).message}`, { status: 404 });
   }
+
+  const followReq: FollowRequest = {
+    id: crypto.randomUUID(),
+    username,
+    targetId,
+    createdAt: new Date().toISOString(),
+    status: "pending",
+  };
+
+  await env.DRAFTS.put(`follow:${followReq.id}`, JSON.stringify(followReq), {
+    expirationTtl: 86400,
+  });
+
+  // Send DM for approval
+  try {
+    await sendFollowDM(followReq, env);
+  } catch (err) {
+    await env.DRAFTS.delete(`follow:${followReq.id}`);
+    return new Response(`Failed to send DM: ${(err as Error).message}`, { status: 502 });
+  }
+
+  return Response.json({ id: followReq.id, status: "pending" }, { status: 201 });
 }
 
 async function handleListDrafts(request: Request, env: Env): Promise<Response> {
@@ -194,7 +217,41 @@ async function handleInteraction(request: Request, env: Env): Promise<Response> 
       return interactionResponse("⛔ Unauthorized", true);
     }
 
-    const [action, draftId] = interaction.data.custom_id.split(":");
+    const [action, kind, itemId] = interaction.data.custom_id.includes(":follow:")
+      ? [interaction.data.custom_id.split(":")[0], "follow", interaction.data.custom_id.split(":")[2]]
+      : [interaction.data.custom_id.split(":")[0], "draft", interaction.data.custom_id.split(":")[1]];
+
+    // Handle follow requests
+    if (kind === "follow") {
+      const raw = await env.DRAFTS.get(`follow:${itemId}`);
+      if (!raw) return updateMessage("⏰ Follow request expired or not found");
+      const followReq: FollowRequest = JSON.parse(raw);
+      if (followReq.status !== "pending") {
+        return updateMessage(`⚠️ Already ${followReq.status === "approved" ? "approved" : "cancelled"}`);
+      }
+      if (action === "approve") {
+        try {
+          const myId = await getMyId(env);
+          const result = await followUser(myId, followReq.targetId, env);
+          followReq.status = "approved";
+          await env.DRAFTS.put(`follow:${itemId}`, JSON.stringify(followReq), { expirationTtl: 86400 });
+          const msg = result.pending
+            ? `✓ Follow request sent to @${followReq.username} (pending their approval)`
+            : `✅ Now following @${followReq.username}`;
+          return updateMessage(msg);
+        } catch (err) {
+          return updateMessage(`❌ Follow failed: ${(err as Error).message}`);
+        }
+      }
+      if (action === "reject") {
+        followReq.status = "rejected";
+        await env.DRAFTS.put(`follow:${itemId}`, JSON.stringify(followReq), { expirationTtl: 86400 });
+        return updateMessage(`❌ Cancelled follow @${followReq.username}`);
+      }
+    }
+
+    // Handle draft tweets
+    const draftId = itemId;
 
     // Get draft from KV
     const raw = await env.DRAFTS.get(`draft:${draftId}`);

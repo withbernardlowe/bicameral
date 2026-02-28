@@ -1,4 +1,4 @@
-import { Env, Draft } from "./types";
+import { Env, Draft, FollowRequest } from "./types";
 
 const DISCORD_API = "https://discord.com/api/v10";
 
@@ -67,6 +67,62 @@ export async function sendDraftDM(draft: Draft, env: Env): Promise<void> {
             style: 4, // Danger (red)
             label: "❌ Cancel",
             custom_id: `reject:${draft.id}`,
+          },
+        ],
+      },
+    ],
+  };
+
+  const res = await fetch(`${DISCORD_API}/channels/${channelId}/messages`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bot ${env.DISCORD_BOT_TOKEN}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(message),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Failed to send DM: ${err}`);
+  }
+}
+
+// Send a DM for follow approval
+export async function sendFollowDM(followReq: FollowRequest, env: Env): Promise<void> {
+  const dmChannel = await fetch(`${DISCORD_API}/users/@me/channels`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bot ${env.DISCORD_BOT_TOKEN}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ recipient_id: env.APPROVED_USER_ID }),
+  });
+
+  if (!dmChannel.ok) {
+    const err = await dmChannel.text();
+    throw new Error(`Failed to create DM channel: ${err}`);
+  }
+
+  const { id: channelId } = (await dmChannel.json()) as { id: string };
+
+  const message = {
+    content: `👤 **Follow Request**\n\n@${followReq.username}\nhttps://x.com/${followReq.username}`,
+    components: [
+      {
+        type: 1,
+        components: [
+          {
+            type: 2,
+            style: 3,
+            label: "✅ Approve",
+            custom_id: `approve:follow:${followReq.id}`,
+          },
+          {
+            type: 2,
+            style: 4,
+            label: "❌ Cancel",
+            custom_id: `reject:follow:${followReq.id}`,
           },
         ],
       },

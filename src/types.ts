@@ -20,3 +20,11 @@ export interface Draft {
   quoteTweetId?: string;
   tweetId?: string;
 }
+
+export interface FollowRequest {
+  id: string;
+  username: string;
+  targetId: string;
+  createdAt: string;
+  status: "pending" | "approved" | "rejected";
+}
