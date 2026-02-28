@@ -150,6 +150,9 @@ async function handleFollow(request: Request, env: Env): Promise<Response> {
   await env.DRAFTS.put(`follow:${followReq.id}`, JSON.stringify(followReq), {
     expirationTtl: 86400,
   });
+  await env.DRAFTS.put(`log:follow:${followReq.id}`, JSON.stringify(followReq), {
+    expirationTtl: 2592000,
+  });
 
   // Send DM for approval
   try {
@@ -172,19 +175,25 @@ async function handleListDrafts(request: Request, env: Env): Promise<Response> {
   // List all log entries
   const keys = await env.DRAFTS.list({ prefix: "log:" });
   const drafts: Draft[] = [];
+  const follows: FollowRequest[] = [];
 
   for (const key of keys.keys) {
     const raw = await env.DRAFTS.get(key.name);
     if (raw) {
-      drafts.push(JSON.parse(raw));
+      const item = JSON.parse(raw);
+      if (key.name.startsWith("log:follow:")) {
+        follows.push(item);
+      } else {
+        drafts.push(item);
+      }
     }
   }
 
-  // Sort by createdAt descending, take 10
+  // Sort by createdAt descending, take 10 each
   drafts.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  const recent = drafts.slice(0, 10);
+  follows.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-  return Response.json({ drafts: recent });
+  return Response.json({ drafts: drafts.slice(0, 10), follows: follows.slice(0, 10) });
 }
 
 async function handleInteraction(request: Request, env: Env): Promise<Response> {
@@ -235,6 +244,7 @@ async function handleInteraction(request: Request, env: Env): Promise<Response> 
           const result = await followUser(myId, followReq.targetId, env);
           followReq.status = "approved";
           await env.DRAFTS.put(`follow:${itemId}`, JSON.stringify(followReq), { expirationTtl: 86400 });
+          await env.DRAFTS.put(`log:follow:${itemId}`, JSON.stringify(followReq), { expirationTtl: 2592000 });
           const msg = result.pending
             ? `✓ Follow request sent to @${followReq.username} (pending their approval)`
             : `✅ Now following @${followReq.username}`;
@@ -246,6 +256,7 @@ async function handleInteraction(request: Request, env: Env): Promise<Response> 
       if (action === "reject") {
         followReq.status = "rejected";
         await env.DRAFTS.put(`follow:${itemId}`, JSON.stringify(followReq), { expirationTtl: 86400 });
+        await env.DRAFTS.put(`log:follow:${itemId}`, JSON.stringify(followReq), { expirationTtl: 2592000 });
         return updateMessage(`❌ Cancelled follow @${followReq.username}`);
       }
     }
