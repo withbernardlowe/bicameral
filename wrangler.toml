@@ -1,0 +1,21 @@
+name = "bicameral"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+[vars]
+# Non-secret env vars go here
+
+# Secrets (set via `wrangler secret put`):
+# DRAFT_API_KEY - API key for Bernard to submit drafts
+# DISCORD_BOT_TOKEN - Bicameral Discord bot token
+# DISCORD_APP_ID - Discord application ID
+# DISCORD_PUBLIC_KEY - Discord interaction verification key
+# APPROVED_USER_ID - Yuren's Discord user ID
+# TWITTER_API_KEY - Twitter API key
+# TWITTER_API_SECRET - Twitter API secret
+# TWITTER_ACCESS_TOKEN - Twitter access token (write)
+# TWITTER_ACCESS_SECRET - Twitter access token secret (write)
+
+[[kv_namespaces]]
+binding = "DRAFTS"
+id = "TBD"

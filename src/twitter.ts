@@ -1,0 +1,71 @@
+import { Env } from "./types";
+
+// OAuth 1.0a signature for Twitter API v2
+export async function postTweet(text: string, env: Env): Promise<{ id: string; text: string }> {
+  const url = "https://api.twitter.com/2/tweets";
+  const method = "POST";
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+  const nonce = crypto.randomUUID().replace(/-/g, "");
+
+  const params: Record<string, string> = {
+    oauth_consumer_key: env.TWITTER_API_KEY,
+    oauth_nonce: nonce,
+    oauth_signature_method: "HMAC-SHA1",
+    oauth_timestamp: timestamp,
+    oauth_token: env.TWITTER_ACCESS_TOKEN,
+    oauth_version: "1.0",
+  };
+
+  // Create signature base string (no body params for JSON POST)
+  const paramString = Object.keys(params)
+    .sort()
+    .map((k) => `${encodeRFC3986(k)}=${encodeRFC3986(params[k])}`)
+    .join("&");
+
+  const baseString = `${method}&${encodeRFC3986(url)}&${encodeRFC3986(paramString)}`;
+  const signingKey = `${encodeRFC3986(env.TWITTER_API_SECRET)}&${encodeRFC3986(env.TWITTER_ACCESS_SECRET)}`;
+
+  const signature = await hmacSha1(signingKey, baseString);
+  params.oauth_signature = signature;
+
+  const authHeader =
+    "OAuth " +
+    Object.keys(params)
+      .sort()
+      .map((k) => `${encodeRFC3986(k)}="${encodeRFC3986(params[k])}"`)
+      .join(", ");
+
+  const res = await fetch(url, {
+    method,
+    headers: {
+      Authorization: authHeader,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ text }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Twitter API error ${res.status}: ${body}`);
+  }
+
+  const json = (await res.json()) as { data: { id: string; text: string } };
+  return json.data;
+}
+
+function encodeRFC3986(str: string): string {
+  return encodeURIComponent(str).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+}
+
+async function hmacSha1(key: string, data: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const cryptoKey = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(key),
+    { name: "HMAC", hash: "SHA-1" },
+    false,
+    ["sign"]
+  );
+  const sig = await crypto.subtle.sign("HMAC", cryptoKey, encoder.encode(data));
+  return btoa(String.fromCharCode(...new Uint8Array(sig)));
+}
