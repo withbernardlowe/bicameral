@@ -2,9 +2,30 @@ import { Env, Draft } from "./types";
 import { verifyDiscordSignature, sendDraftDM, interactionResponse, updateMessage } from "./discord";
 import { postTweet } from "./twitter";
 
+const RATE_LIMIT = 10; // max requests per window
+const RATE_WINDOW = 60; // window in seconds
+
+async function checkRateLimit(ip: string, env: Env): Promise<boolean> {
+  const key = `rate:${ip}`;
+  const raw = await env.DRAFTS.get(key);
+  const count = raw ? parseInt(raw, 10) : 0;
+  if (count >= RATE_LIMIT) return false;
+  await env.DRAFTS.put(key, (count + 1).toString(), { expirationTtl: RATE_WINDOW });
+  return true;
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+
+    // Rate limit API endpoints (not /interactions which has Discord signature verification)
+    if (url.pathname === "/draft" || url.pathname === "/drafts") {
+      const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+      const allowed = await checkRateLimit(ip, env);
+      if (!allowed) {
+        return new Response("Too many requests", { status: 429 });
+      }
+    }
 
     // POST /draft — Bernard submits a draft tweet
     if (url.pathname === "/draft" && request.method === "POST") {
