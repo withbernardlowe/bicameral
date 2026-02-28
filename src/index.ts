@@ -1,5 +1,5 @@
 import { Env, Draft, FollowRequest } from "./types";
-import { verifyDiscordSignature, sendDraftDM, interactionResponse, updateMessage } from "./discord";
+import { verifyDiscordSignature, sendDraftDM, sendFollowDM, interactionResponse, updateMessage } from "./discord";
 import { postTweet, followUser, getMyId, lookupUser } from "./twitter";
 
 const RATE_LIMIT = 10; // max requests per window
