@@ -101,7 +101,7 @@ async function handleInteraction(request: Request, env: Env): Promise<Response> 
 
     // Verify it's the approved user
     if (userId !== env.APPROVED_USER_ID) {
-      return interactionResponse("⛔ 你沒有權限操作", true);
+      return interactionResponse("⛔ Unauthorized", true);
     }
 
     const [action, draftId] = interaction.data.custom_id.split(":");
@@ -109,13 +109,13 @@ async function handleInteraction(request: Request, env: Env): Promise<Response> 
     // Get draft from KV
     const raw = await env.DRAFTS.get(`draft:${draftId}`);
     if (!raw) {
-      return updateMessage("⏰ 這個草稿已過期或不存在");
+      return updateMessage("⏰ Draft expired or not found");
     }
 
     const draft: Draft = JSON.parse(raw);
 
     if (draft.status !== "pending") {
-      return updateMessage(`⚠️ 這個草稿已經${draft.status === "approved" ? "發布" : "取消"}了`);
+      return updateMessage(`⚠️ Draft already ${draft.status === "approved" ? "published" : "cancelled"}`);
     }
 
     if (action === "approve") {
@@ -126,10 +126,10 @@ async function handleInteraction(request: Request, env: Env): Promise<Response> 
           expirationTtl: 86400,
         });
         return updateMessage(
-          `✅ 已發布！\n\n${draft.text}\n\nhttps://x.com/i/status/${tweet.id}`
+          `✅ Published!\n\n${draft.text}\n\nhttps://x.com/i/status/${tweet.id}`
         );
       } catch (err) {
-        return updateMessage(`❌ 發推失敗：${(err as Error).message}`);
+        return updateMessage(`❌ Failed to post: ${(err as Error).message}`);
       }
     }
 
@@ -138,7 +138,7 @@ async function handleInteraction(request: Request, env: Env): Promise<Response> 
       await env.DRAFTS.put(`draft:${draftId}`, JSON.stringify(draft), {
         expirationTtl: 86400,
       });
-      return updateMessage(`❌ 已取消\n\n~~${draft.text}~~`);
+      return updateMessage(`❌ Cancelled\n\n~~${draft.text}~~`);
     }
   }
 

@@ -48,8 +48,8 @@ export async function sendDraftDM(draft: Draft, env: Env): Promise<void> {
   // Send message with buttons
   const message = {
     content: draft.replyToId
-      ? `📝 **回覆草稿**\n\n↩️ https://x.com/i/status/${draft.replyToId}\n\n${draft.text}`
-      : `📝 **新推文草稿**\n\n${draft.text}`,
+      ? `📝 **Reply Draft**\n\n↩️ https://x.com/i/status/${draft.replyToId}\n\n${draft.text}`
+      : `📝 **New Tweet Draft**\n\n${draft.text}`,
     components: [
       {
         type: 1, // Action Row
@@ -57,13 +57,13 @@ export async function sendDraftDM(draft: Draft, env: Env): Promise<void> {
           {
             type: 2, // Button
             style: 3, // Success (green)
-            label: "✅ 發布",
+            label: "✅ Publish",
             custom_id: `approve:${draft.id}`,
           },
           {
             type: 2,
             style: 4, // Danger (red)
-            label: "❌ 取消",
+            label: "❌ Cancel",
             custom_id: `reject:${draft.id}`,
           },
         ],
