@@ -16,6 +16,11 @@ export default {
       return handleInteraction(request, env);
     }
 
+    // GET /drafts — List recent drafts
+    if (url.pathname === "/drafts" && request.method === "GET") {
+      return handleListDrafts(request, env);
+    }
+
     // Health check
     if (url.pathname === "/" && request.method === "GET") {
       return new Response("bicameral is listening", { status: 200 });
@@ -62,16 +67,47 @@ async function handleDraft(request: Request, env: Env): Promise<Response> {
     expirationTtl: 86400,
   });
 
+  // Write to log (30-day TTL)
+  await env.DRAFTS.put(`log:${draft.id}`, JSON.stringify(draft), {
+    expirationTtl: 2592000,
+  });
+
   // Send DM to Yuren
   try {
     await sendDraftDM(draft, env);
   } catch (err) {
     // Clean up KV if DM fails
     await env.DRAFTS.delete(`draft:${draft.id}`);
+    await env.DRAFTS.delete(`log:${draft.id}`);
     return new Response(`Failed to send DM: ${(err as Error).message}`, { status: 502 });
   }
 
   return Response.json({ id: draft.id, status: "pending" }, { status: 201 });
+}
+
+async function handleListDrafts(request: Request, env: Env): Promise<Response> {
+  // Verify API key
+  const auth = request.headers.get("Authorization");
+  if (auth !== `Bearer ${env.DRAFT_API_KEY}`) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+
+  // List all log entries
+  const keys = await env.DRAFTS.list({ prefix: "log:" });
+  const drafts: Draft[] = [];
+
+  for (const key of keys.keys) {
+    const raw = await env.DRAFTS.get(key.name);
+    if (raw) {
+      drafts.push(JSON.parse(raw));
+    }
+  }
+
+  // Sort by createdAt descending, take 10
+  drafts.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  const recent = drafts.slice(0, 10);
+
+  return Response.json({ drafts: recent });
 }
 
 async function handleInteraction(request: Request, env: Env): Promise<Response> {
@@ -122,8 +158,12 @@ async function handleInteraction(request: Request, env: Env): Promise<Response> 
       try {
         const tweet = await postTweet(draft.text, env, draft.replyToId);
         draft.status = "approved";
-        await env.DRAFTS.put(`draft:${draftId}`, JSON.stringify(draft), {
+        const approvedDraft = { ...draft, tweetId: tweet.id };
+        await env.DRAFTS.put(`draft:${draftId}`, JSON.stringify(approvedDraft), {
           expirationTtl: 86400,
+        });
+        await env.DRAFTS.put(`log:${draftId}`, JSON.stringify(approvedDraft), {
+          expirationTtl: 2592000,
         });
         return updateMessage(
           `✅ Published!\n\n${draft.text}\n\nhttps://x.com/i/status/${tweet.id}`
@@ -137,6 +177,9 @@ async function handleInteraction(request: Request, env: Env): Promise<Response> 
       draft.status = "rejected";
       await env.DRAFTS.put(`draft:${draftId}`, JSON.stringify(draft), {
         expirationTtl: 86400,
+      });
+      await env.DRAFTS.put(`log:${draftId}`, JSON.stringify(draft), {
+        expirationTtl: 2592000,
       });
       return updateMessage(`❌ Cancelled\n\n~~${draft.text}~~`);
     }
