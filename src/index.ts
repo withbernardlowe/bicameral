@@ -1,6 +1,6 @@
 import { Env, Draft } from "./types";
 import { verifyDiscordSignature, sendDraftDM, interactionResponse, updateMessage } from "./discord";
-import { postTweet } from "./twitter";
+import { postTweet, followUser, getMyId, lookupUser } from "./twitter";
 
 const RATE_LIMIT = 10; // max requests per window
 const RATE_WINDOW = 60; // window in seconds
@@ -19,7 +19,7 @@ export default {
     const url = new URL(request.url);
 
     // Rate limit API endpoints (not /interactions which has Discord signature verification)
-    if (url.pathname === "/draft" || url.pathname === "/drafts") {
+    if (url.pathname === "/draft" || url.pathname === "/drafts" || url.pathname === "/follow") {
       const ip = request.headers.get("CF-Connecting-IP") || "unknown";
       const allowed = await checkRateLimit(ip, env);
       if (!allowed) {
@@ -40,6 +40,11 @@ export default {
     // GET /drafts — List recent drafts
     if (url.pathname === "/drafts" && request.method === "GET") {
       return handleListDrafts(request, env);
+    }
+
+    // POST /follow — Follow a user
+    if (url.pathname === "/follow" && request.method === "POST") {
+      return handleFollow(request, env);
     }
 
     // Health check
@@ -105,6 +110,33 @@ async function handleDraft(request: Request, env: Env): Promise<Response> {
   }
 
   return Response.json({ id: draft.id, status: "pending" }, { status: 201 });
+}
+
+async function handleFollow(request: Request, env: Env): Promise<Response> {
+  const auth = request.headers.get("Authorization");
+  if (auth !== `Bearer ${env.DRAFT_API_KEY}`) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+
+  let body: { username?: string };
+  try {
+    body = (await request.json()) as { username?: string };
+  } catch {
+    return new Response("Invalid JSON", { status: 400 });
+  }
+
+  if (!body.username) {
+    return new Response("Missing 'username' field", { status: 400 });
+  }
+
+  try {
+    const targetId = await lookupUser(body.username.replace(/^@/, ""), env);
+    const myId = await getMyId(env);
+    const result = await followUser(myId, targetId, env);
+    return Response.json(result);
+  } catch (err) {
+    return new Response(`Failed: ${(err as Error).message}`, { status: 502 });
+  }
 }
 
 async function handleListDrafts(request: Request, env: Env): Promise<Response> {

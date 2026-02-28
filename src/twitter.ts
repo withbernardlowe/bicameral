@@ -57,6 +57,80 @@ export async function postTweet(text: string, env: Env, replyToId?: string, quot
   return json.data;
 }
 
+export async function lookupUser(username: string, env: Env): Promise<string> {
+  const url = `https://api.twitter.com/2/users/by/username/${username}`;
+  const res = await oauthFetch("GET", url, env);
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Lookup failed ${res.status}: ${body}`);
+  }
+  const json = (await res.json()) as { data: { id: string } };
+  return json.data.id;
+}
+
+export async function getMyId(env: Env): Promise<string> {
+  const url = "https://api.twitter.com/2/users/me";
+  const res = await oauthFetch("GET", url, env);
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Get me failed ${res.status}: ${body}`);
+  }
+  const json = (await res.json()) as { data: { id: string } };
+  return json.data.id;
+}
+
+export async function followUser(myId: string, targetId: string, env: Env): Promise<{ following: boolean; pending: boolean }> {
+  const url = `https://api.twitter.com/2/users/${myId}/following`;
+  const res = await oauthFetch("POST", url, env, { target_user_id: targetId });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Follow failed ${res.status}: ${body}`);
+  }
+  const json = (await res.json()) as { data: { following: boolean; pending_follow: boolean } };
+  return { following: json.data.following, pending: json.data.pending_follow };
+}
+
+async function oauthFetch(method: string, url: string, env: Env, body?: Record<string, string>): Promise<Response> {
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+  const nonce = crypto.randomUUID().replace(/-/g, "");
+
+  const params: Record<string, string> = {
+    oauth_consumer_key: env.TWITTER_API_KEY,
+    oauth_nonce: nonce,
+    oauth_signature_method: "HMAC-SHA1",
+    oauth_timestamp: timestamp,
+    oauth_token: env.TWITTER_ACCESS_TOKEN,
+    oauth_version: "1.0",
+  };
+
+  const paramString = Object.keys(params)
+    .sort()
+    .map((k) => `${encodeRFC3986(k)}=${encodeRFC3986(params[k])}`)
+    .join("&");
+
+  const baseString = `${method}&${encodeRFC3986(url)}&${encodeRFC3986(paramString)}`;
+  const signingKey = `${encodeRFC3986(env.TWITTER_API_SECRET)}&${encodeRFC3986(env.TWITTER_ACCESS_SECRET)}`;
+
+  const signature = await hmacSha1(signingKey, baseString);
+  params.oauth_signature = signature;
+
+  const authHeader =
+    "OAuth " +
+    Object.keys(params)
+      .sort()
+      .map((k) => `${encodeRFC3986(k)}="${encodeRFC3986(params[k])}"`)
+      .join(", ");
+
+  const headers: Record<string, string> = { Authorization: authHeader };
+  if (body) headers["Content-Type"] = "application/json";
+
+  return fetch(url, {
+    method,
+    headers,
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+}
+
 function encodeRFC3986(str: string): string {
   return encodeURIComponent(str).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
 }
