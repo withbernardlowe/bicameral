@@ -49,6 +49,8 @@ export async function sendDraftDM(draft: Draft, env: Env): Promise<void> {
   const message = {
     content: draft.replyToId
       ? `📝 **Reply Draft**\n\n↩️ https://x.com/i/status/${draft.replyToId}\n\n${draft.text}`
+      : draft.quoteTweetId
+      ? `📝 **Quote Tweet Draft**\n\n🔁 https://x.com/i/status/${draft.quoteTweetId}\n\n${draft.text}`
       : `📝 **New Tweet Draft**\n\n${draft.text}`,
     components: [
       {

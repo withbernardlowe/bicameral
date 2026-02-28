@@ -59,9 +59,9 @@ async function handleDraft(request: Request, env: Env): Promise<Response> {
   }
 
   // Parse body
-  let body: { text?: string; reply_to?: string };
+  let body: { text?: string; reply_to?: string; quote_tweet_id?: string };
   try {
-    body = (await request.json()) as { text?: string; reply_to?: string };
+    body = (await request.json()) as { text?: string; reply_to?: string; quote_tweet_id?: string };
   } catch {
     return new Response("Invalid JSON", { status: 400 });
   }
@@ -81,6 +81,7 @@ async function handleDraft(request: Request, env: Env): Promise<Response> {
     createdAt: new Date().toISOString(),
     status: "pending",
     ...(body.reply_to ? { replyToId: body.reply_to } : {}),
+    ...(body.quote_tweet_id ? { quoteTweetId: body.quote_tweet_id } : {}),
   };
 
   // Store in KV (TTL 24h)
@@ -177,7 +178,7 @@ async function handleInteraction(request: Request, env: Env): Promise<Response> 
 
     if (action === "approve") {
       try {
-        const tweet = await postTweet(draft.text, env, draft.replyToId);
+        const tweet = await postTweet(draft.text, env, draft.replyToId, draft.quoteTweetId);
         draft.status = "approved";
         const approvedDraft = { ...draft, tweetId: tweet.id };
         await env.DRAFTS.put(`draft:${draftId}`, JSON.stringify(approvedDraft), {

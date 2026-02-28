@@ -17,5 +17,6 @@ export interface Draft {
   createdAt: string;
   status: "pending" | "approved" | "rejected";
   replyToId?: string;
+  quoteTweetId?: string;
   tweetId?: string;
 }
