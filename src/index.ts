@@ -1,6 +1,6 @@
 import { Env, Draft, FollowRequest } from "./types";
 import { verifyDiscordSignature, sendDraftDM, sendFollowDM, interactionResponse, updateMessage } from "./discord";
-import { postTweet, followUser, unfollowUser, getMyId, getFollowing, lookupUser } from "./twitter";
+import { postTweet, followUser, unfollowUser, getMyId, lookupUser } from "./twitter";
 
 const RATE_LIMIT = 10; // max requests per window
 const RATE_WINDOW = 60; // window in seconds
@@ -234,13 +234,9 @@ async function handleGetFollowing(request: Request, env: Env): Promise<Response>
     return new Response("Unauthorized", { status: 401 });
   }
 
-  try {
-    const myId = await getMyId(env);
-    const following = await getFollowing(myId, env);
-    return Response.json({ following, count: following.length });
-  } catch (err) {
-    return Response.json({ error: (err as Error).message }, { status: 500 });
-  }
+  const raw = await env.DRAFTS.get("following:list");
+  const following: Array<{ username: string; followedAt: string }> = raw ? JSON.parse(raw) : [];
+  return Response.json({ following, count: following.length });
 }
 
 async function handleListDrafts(request: Request, env: Env): Promise<Response> {
@@ -272,6 +268,22 @@ async function handleListDrafts(request: Request, env: Env): Promise<Response> {
   follows.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
   return Response.json({ drafts: drafts.slice(0, 10), follows: follows.slice(0, 10) });
+}
+
+async function addToFollowingList(username: string, env: Env): Promise<void> {
+  const raw = await env.DRAFTS.get("following:list");
+  const list: Array<{ username: string; followedAt: string }> = raw ? JSON.parse(raw) : [];
+  if (!list.some((f) => f.username.toLowerCase() === username.toLowerCase())) {
+    list.push({ username, followedAt: new Date().toISOString() });
+    await env.DRAFTS.put("following:list", JSON.stringify(list));
+  }
+}
+
+async function removeFromFollowingList(username: string, env: Env): Promise<void> {
+  const raw = await env.DRAFTS.get("following:list");
+  const list: Array<{ username: string; followedAt: string }> = raw ? JSON.parse(raw) : [];
+  const filtered = list.filter((f) => f.username.toLowerCase() !== username.toLowerCase());
+  await env.DRAFTS.put("following:list", JSON.stringify(filtered));
 }
 
 async function handleInteraction(request: Request, env: Env): Promise<Response> {
@@ -324,12 +336,16 @@ async function handleInteraction(request: Request, env: Env): Promise<Response> 
             followReq.status = "approved";
             await env.DRAFTS.put(`follow:${itemId}`, JSON.stringify(followReq), { expirationTtl: 86400 });
             await env.DRAFTS.put(`log:follow:${itemId}`, JSON.stringify(followReq), { expirationTtl: 2592000 });
+            await removeFromFollowingList(followReq.username, env);
             return updateMessage(`✅ Unfollowed @${followReq.username}`);
           }
           const result = await followUser(myId, followReq.targetId, env);
           followReq.status = "approved";
           await env.DRAFTS.put(`follow:${itemId}`, JSON.stringify(followReq), { expirationTtl: 86400 });
           await env.DRAFTS.put(`log:follow:${itemId}`, JSON.stringify(followReq), { expirationTtl: 2592000 });
+          if (!result.pending) {
+            await addToFollowingList(followReq.username, env);
+          }
           const msg = result.pending
             ? `✓ Follow request sent to @${followReq.username} (pending their approval)`
             : `✅ Now following @${followReq.username}`;
