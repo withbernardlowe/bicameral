@@ -250,7 +250,11 @@ async function handleInteraction(request: Request, env: Env): Promise<Response> 
             : `✅ Now following @${followReq.username}`;
           return updateMessage(msg);
         } catch (err) {
-          return updateMessage(`❌ Follow failed: ${(err as Error).message}`);
+          const reason = (err as Error).message;
+          followReq.status = "rejected";
+          await env.DRAFTS.put(`follow:${itemId}`, JSON.stringify({ ...followReq, failReason: reason }), { expirationTtl: 86400 });
+          await env.DRAFTS.put(`log:follow:${itemId}`, JSON.stringify({ ...followReq, failReason: reason }), { expirationTtl: 2592000 });
+          return updateMessage(`❌ Follow failed: ${reason}`);
         }
       }
       if (action === "reject") {
@@ -291,7 +295,16 @@ async function handleInteraction(request: Request, env: Env): Promise<Response> 
           `✅ Published!\n\n${draft.text}\n\nhttps://x.com/i/status/${tweet.id}`
         );
       } catch (err) {
-        return updateMessage(`❌ Failed to post: ${(err as Error).message}`);
+        const reason = (err as Error).message;
+        draft.status = "failed";
+        const failedDraft = { ...draft, failReason: reason };
+        await env.DRAFTS.put(`draft:${draftId}`, JSON.stringify(failedDraft), {
+          expirationTtl: 86400,
+        });
+        await env.DRAFTS.put(`log:${draftId}`, JSON.stringify(failedDraft), {
+          expirationTtl: 2592000,
+        });
+        return updateMessage(`❌ Failed to post: ${reason}`);
       }
     }
 

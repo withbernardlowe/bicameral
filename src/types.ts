@@ -15,10 +15,11 @@ export interface Draft {
   id: string;
   text: string;
   createdAt: string;
-  status: "pending" | "approved" | "rejected";
+  status: "pending" | "approved" | "rejected" | "failed";
   replyToId?: string;
   quoteTweetId?: string;
   tweetId?: string;
+  failReason?: string;
 }
 
 export interface FollowRequest {
