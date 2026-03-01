@@ -343,9 +343,7 @@ async function handleInteraction(request: Request, env: Env): Promise<Response> 
           followReq.status = "approved";
           await env.DRAFTS.put(`follow:${itemId}`, JSON.stringify(followReq), { expirationTtl: 86400 });
           await env.DRAFTS.put(`log:follow:${itemId}`, JSON.stringify(followReq), { expirationTtl: 2592000 });
-          if (!result.pending) {
-            await addToFollowingList(followReq.username, env);
-          }
+          await addToFollowingList(followReq.username, env);
           const msg = result.pending
             ? `✓ Follow request sent to @${followReq.username} (pending their approval)`
             : `✅ Now following @${followReq.username}`;
