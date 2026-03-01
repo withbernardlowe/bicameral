@@ -90,6 +90,17 @@ export async function followUser(myId: string, targetId: string, env: Env): Prom
   return { following: json.data.following, pending: json.data.pending_follow };
 }
 
+export async function unfollowUser(myId: string, targetId: string, env: Env): Promise<{ following: boolean }> {
+  const url = `https://api.twitter.com/2/users/${myId}/following/${targetId}`;
+  const res = await oauthFetch("DELETE", url, env);
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Unfollow failed ${res.status}: ${body}`);
+  }
+  const json = (await res.json()) as { data: { following: boolean } };
+  return { following: json.data.following };
+}
+
 async function oauthFetch(method: string, url: string, env: Env, body?: Record<string, string>): Promise<Response> {
   const timestamp = Math.floor(Date.now() / 1000).toString();
   const nonce = crypto.randomUUID().replace(/-/g, "");

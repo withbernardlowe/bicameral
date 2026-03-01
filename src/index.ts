@@ -1,6 +1,6 @@
 import { Env, Draft, FollowRequest } from "./types";
 import { verifyDiscordSignature, sendDraftDM, sendFollowDM, interactionResponse, updateMessage } from "./discord";
-import { postTweet, followUser, getMyId, lookupUser } from "./twitter";
+import { postTweet, followUser, unfollowUser, getMyId, lookupUser } from "./twitter";
 
 const RATE_LIMIT = 10; // max requests per window
 const RATE_WINDOW = 60; // window in seconds
@@ -19,7 +19,7 @@ export default {
     const url = new URL(request.url);
 
     // Rate limit API endpoints (not /interactions which has Discord signature verification)
-    if (url.pathname === "/draft" || url.pathname === "/drafts" || url.pathname === "/follow") {
+    if (url.pathname === "/draft" || url.pathname === "/drafts" || url.pathname === "/follow" || url.pathname === "/unfollow") {
       const ip = request.headers.get("CF-Connecting-IP") || "unknown";
       const allowed = await checkRateLimit(ip, env);
       if (!allowed) {
@@ -45,6 +45,11 @@ export default {
     // POST /follow — Follow a user
     if (url.pathname === "/follow" && request.method === "POST") {
       return handleFollow(request, env);
+    }
+
+    // POST /unfollow — Unfollow a user
+    if (url.pathname === "/unfollow" && request.method === "POST") {
+      return handleUnfollow(request, env);
     }
 
     // Health check
@@ -163,6 +168,41 @@ async function handleFollow(request: Request, env: Env): Promise<Response> {
   }
 
   return Response.json({ id: followReq.id, status: "pending" }, { status: 201 });
+}
+
+async function handleUnfollow(request: Request, env: Env): Promise<Response> {
+  const auth = request.headers.get("Authorization");
+  if (auth !== `Bearer ${env.DRAFT_API_KEY}`) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+
+  let body: { username?: string };
+  try {
+    body = (await request.json()) as { username?: string };
+  } catch {
+    return new Response("Invalid JSON", { status: 400 });
+  }
+
+  if (!body.username) {
+    return new Response("Missing 'username' field", { status: 400 });
+  }
+
+  const username = body.username.replace(/^@/, "");
+
+  let targetId: string;
+  try {
+    targetId = await lookupUser(username, env);
+  } catch (err) {
+    return new Response(`User lookup failed: ${(err as Error).message}`, { status: 404 });
+  }
+
+  try {
+    const myId = await getMyId(env);
+    const result = await unfollowUser(myId, targetId, env);
+    return Response.json({ username, unfollowed: !result.following }, { status: 200 });
+  } catch (err) {
+    return Response.json({ username, error: (err as Error).message }, { status: 500 });
+  }
 }
 
 async function handleListDrafts(request: Request, env: Env): Promise<Response> {
