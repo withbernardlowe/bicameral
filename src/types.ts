@@ -28,4 +28,5 @@ export interface FollowRequest {
   targetId: string;
   createdAt: string;
   status: "pending" | "approved" | "rejected";
+  action: "follow" | "unfollow";
 }

@@ -150,6 +150,7 @@ async function handleFollow(request: Request, env: Env): Promise<Response> {
     targetId,
     createdAt: new Date().toISOString(),
     status: "pending",
+    action: "follow",
   };
 
   await env.DRAFTS.put(`follow:${followReq.id}`, JSON.stringify(followReq), {
@@ -196,13 +197,30 @@ async function handleUnfollow(request: Request, env: Env): Promise<Response> {
     return new Response(`User lookup failed: ${(err as Error).message}`, { status: 404 });
   }
 
+  const followReq: FollowRequest = {
+    id: crypto.randomUUID(),
+    username,
+    targetId,
+    createdAt: new Date().toISOString(),
+    status: "pending",
+    action: "unfollow",
+  };
+
+  await env.DRAFTS.put(`follow:${followReq.id}`, JSON.stringify(followReq), {
+    expirationTtl: 86400,
+  });
+  await env.DRAFTS.put(`log:follow:${followReq.id}`, JSON.stringify(followReq), {
+    expirationTtl: 2592000,
+  });
+
   try {
-    const myId = await getMyId(env);
-    const result = await unfollowUser(myId, targetId, env);
-    return Response.json({ username, unfollowed: !result.following }, { status: 200 });
+    await sendFollowDM(followReq, env);
   } catch (err) {
-    return Response.json({ username, error: (err as Error).message }, { status: 500 });
+    await env.DRAFTS.delete(`follow:${followReq.id}`);
+    return new Response(`Failed to send DM: ${(err as Error).message}`, { status: 502 });
   }
+
+  return Response.json({ id: followReq.id, status: "pending" }, { status: 201 });
 }
 
 async function handleListDrafts(request: Request, env: Env): Promise<Response> {
@@ -281,6 +299,13 @@ async function handleInteraction(request: Request, env: Env): Promise<Response> 
       if (action === "approve") {
         try {
           const myId = await getMyId(env);
+          if (followReq.action === "unfollow") {
+            await unfollowUser(myId, followReq.targetId, env);
+            followReq.status = "approved";
+            await env.DRAFTS.put(`follow:${itemId}`, JSON.stringify(followReq), { expirationTtl: 86400 });
+            await env.DRAFTS.put(`log:follow:${itemId}`, JSON.stringify(followReq), { expirationTtl: 2592000 });
+            return updateMessage(`✅ Unfollowed @${followReq.username}`);
+          }
           const result = await followUser(myId, followReq.targetId, env);
           followReq.status = "approved";
           await env.DRAFTS.put(`follow:${itemId}`, JSON.stringify(followReq), { expirationTtl: 86400 });
@@ -294,7 +319,7 @@ async function handleInteraction(request: Request, env: Env): Promise<Response> 
           followReq.status = "rejected";
           await env.DRAFTS.put(`follow:${itemId}`, JSON.stringify({ ...followReq, failReason: reason }), { expirationTtl: 86400 });
           await env.DRAFTS.put(`log:follow:${itemId}`, JSON.stringify({ ...followReq, failReason: reason }), { expirationTtl: 2592000 });
-          return updateMessage(`❌ Follow failed: ${reason}`);
+          return updateMessage(`❌ ${followReq.action === "unfollow" ? "Unfollow" : "Follow"} failed: ${reason}`);
         }
       }
       if (action === "reject") {

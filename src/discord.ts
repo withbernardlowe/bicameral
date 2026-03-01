@@ -106,8 +106,11 @@ export async function sendFollowDM(followReq: FollowRequest, env: Env): Promise<
 
   const { id: channelId } = (await dmChannel.json()) as { id: string };
 
+  const isUnfollow = followReq.action === "unfollow";
   const message = {
-    content: `👤 **Follow Request**\n\n@${followReq.username}\nhttps://x.com/${followReq.username}`,
+    content: isUnfollow
+      ? `👤 **Unfollow Request**\n\n@${followReq.username}\nhttps://x.com/${followReq.username}`
+      : `👤 **Follow Request**\n\n@${followReq.username}\nhttps://x.com/${followReq.username}`,
     components: [
       {
         type: 1,
