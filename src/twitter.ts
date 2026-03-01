@@ -129,6 +129,10 @@ async function oauthFetch(method: string, url: string, env: Env, body?: Record<s
   const timestamp = Math.floor(Date.now() / 1000).toString();
   const nonce = crypto.randomUUID().replace(/-/g, "");
 
+  // Separate base URL and query params for OAuth signature
+  const urlObj = new URL(url);
+  const baseUrl = `${urlObj.origin}${urlObj.pathname}`;
+
   const params: Record<string, string> = {
     oauth_consumer_key: env.TWITTER_API_KEY,
     oauth_nonce: nonce,
@@ -138,21 +142,30 @@ async function oauthFetch(method: string, url: string, env: Env, body?: Record<s
     oauth_version: "1.0",
   };
 
+  // Include query params in signature
+  urlObj.searchParams.forEach((value, key) => {
+    params[key] = value;
+  });
+
   const paramString = Object.keys(params)
     .sort()
     .map((k) => `${encodeRFC3986(k)}=${encodeRFC3986(params[k])}`)
     .join("&");
 
-  const baseString = `${method}&${encodeRFC3986(url)}&${encodeRFC3986(paramString)}`;
+  const baseString = `${method}&${encodeRFC3986(baseUrl)}&${encodeRFC3986(paramString)}`;
   const signingKey = `${encodeRFC3986(env.TWITTER_API_SECRET)}&${encodeRFC3986(env.TWITTER_ACCESS_SECRET)}`;
 
   const signature = await hmacSha1(signingKey, baseString);
   params.oauth_signature = signature;
 
+  // Only OAuth params in the header (not query params)
+  const oauthParams = Object.keys(params)
+    .filter((k) => k.startsWith("oauth_"))
+    .sort();
+
   const authHeader =
     "OAuth " +
-    Object.keys(params)
-      .sort()
+    oauthParams
       .map((k) => `${encodeRFC3986(k)}="${encodeRFC3986(params[k])}"`)
       .join(", ");
 
