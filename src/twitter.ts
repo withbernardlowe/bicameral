@@ -101,6 +101,30 @@ export async function unfollowUser(myId: string, targetId: string, env: Env): Pr
   return { following: json.data.following };
 }
 
+export async function getFollowing(myId: string, env: Env): Promise<Array<{ id: string; username: string; name: string }>> {
+  const results: Array<{ id: string; username: string; name: string }> = [];
+  let nextToken: string | undefined;
+
+  do {
+    const url = `https://api.twitter.com/2/users/${myId}/following?max_results=100${nextToken ? `&pagination_token=${nextToken}` : ""}`;
+    const res = await oauthFetch("GET", url, env);
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`Get following failed ${res.status}: ${body}`);
+    }
+    const json = (await res.json()) as {
+      data?: Array<{ id: string; username: string; name: string }>;
+      meta?: { next_token?: string };
+    };
+    if (json.data) {
+      results.push(...json.data);
+    }
+    nextToken = json.meta?.next_token;
+  } while (nextToken);
+
+  return results;
+}
+
 async function oauthFetch(method: string, url: string, env: Env, body?: Record<string, string>): Promise<Response> {
   const timestamp = Math.floor(Date.now() / 1000).toString();
   const nonce = crypto.randomUUID().replace(/-/g, "");

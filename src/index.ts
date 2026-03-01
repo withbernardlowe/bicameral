@@ -1,6 +1,6 @@
 import { Env, Draft, FollowRequest } from "./types";
 import { verifyDiscordSignature, sendDraftDM, sendFollowDM, interactionResponse, updateMessage } from "./discord";
-import { postTweet, followUser, unfollowUser, getMyId, lookupUser } from "./twitter";
+import { postTweet, followUser, unfollowUser, getMyId, getFollowing, lookupUser } from "./twitter";
 
 const RATE_LIMIT = 10; // max requests per window
 const RATE_WINDOW = 60; // window in seconds
@@ -50,6 +50,11 @@ export default {
     // POST /unfollow — Unfollow a user
     if (url.pathname === "/unfollow" && request.method === "POST") {
       return handleUnfollow(request, env);
+    }
+
+    // GET /following — List accounts we follow
+    if (url.pathname === "/following" && request.method === "GET") {
+      return handleGetFollowing(request, env);
     }
 
     // Health check
@@ -221,6 +226,21 @@ async function handleUnfollow(request: Request, env: Env): Promise<Response> {
   }
 
   return Response.json({ id: followReq.id, status: "pending" }, { status: 201 });
+}
+
+async function handleGetFollowing(request: Request, env: Env): Promise<Response> {
+  const auth = request.headers.get("Authorization");
+  if (auth !== `Bearer ${env.DRAFT_API_KEY}`) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+
+  try {
+    const myId = await getMyId(env);
+    const following = await getFollowing(myId, env);
+    return Response.json({ following, count: following.length });
+  } catch (err) {
+    return Response.json({ error: (err as Error).message }, { status: 500 });
+  }
 }
 
 async function handleListDrafts(request: Request, env: Env): Promise<Response> {
